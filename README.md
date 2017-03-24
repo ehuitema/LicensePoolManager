@@ -27,8 +27,8 @@ Always use this in favor of the appstore module due to its enhancements. Typical
 # Remarks
 ### Background - how it works
 The implementation uses the concept of "custom loginhandler" ( [Explained here](https://bartgroot.nl/mendix/custom-checks-on-login/) ) to check the number of logged in/ assigned users to a licensepool when a user logs in. The class LoginHandler takes care of the licensepool logic but lacked a few features.
-# Unfortunately, the default useraccount checks (e.g. if an account is blocked, etc) have not been implemented in the std. module. These checks are now added to the LoginHandler class.
-# In order to work together with the PersistentLogin module, some changes were made to the login logic in the LoginHandler class. The old code always created a session for the user if the licensepool checks were successful. Now the logic checks if the user already has a session (in case of persistent login) and executes the licensepool checks accordingly. 
+1. Unfortunately, the default useraccount checks (e.g. if an account is blocked, etc) have not been implemented in the std. module. These checks are now added to the LoginHandler class.
+2. In order to work together with the PersistentLogin module, some changes were made to the login logic in the LoginHandler class. The old code always created a session for the user if the licensepool checks were successful. Now the logic checks if the user already has a session (in case of persistent login) and executes the licensepool checks accordingly. 
  
 # Known bugs
 * A LicensePool admin is not able to view or edit Blocked and Active boolean values of a User. These are restricted by the System module and work as designed in Mendix.
