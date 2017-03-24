@@ -1,0 +1,110 @@
+package licensepoolmanager.actions;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+import licensepoolmanager.proxies.Account;
+import licensepoolmanager.proxies.LicensePool;
+import licensepoolmanager.proxies.UserLimit;
+
+import com.mendix.core.Core;
+import com.mendix.core.CoreException;
+import com.mendix.logging.ILogNode;
+import com.mendix.systemwideinterfaces.core.AuthenticationRuntimeException;
+import com.mendix.systemwideinterfaces.core.IContext;
+import com.mendix.systemwideinterfaces.core.IMendixObject;
+import com.mendix.systemwideinterfaces.core.ISession;
+import com.mendix.systemwideinterfaces.core.IUser;
+import com.mendix.systemwideinterfaces.core.UserAction;
+
+public class LoginHandler extends UserAction<ISession>
+{	
+	private static ILogNode log = Core.getLogger("LicensePoolManager");
+	private final String userName;
+	private final String password;
+	private final String currentSessionId;
+	private final IContext context;
+	
+	public LoginHandler(Map<String, Object> params) 
+	{		
+		super(Core.createSystemContext());
+		this.context = getContext();
+		this.userName = (String)params.get("userName");
+		this.password = (String)params.get("password");
+		this.currentSessionId = (String)params.get("currentSessionId");
+	}
+
+	@Override
+	public ISession executeAction() throws Exception
+	{		
+		// Search the user that wants to login
+		IUser mxUser = Core.getUser(this.context, this.userName);
+		// No user found, no login.
+		if(mxUser != null)
+		{
+			// Check first if the given username and password are correct.
+			if(!Core.authenticate(context, mxUser, password))
+			{
+				throw new AuthenticationRuntimeException("Login attempt failed due incorrect credentials.");
+			}
+			log.trace("Verified the login credentials for user: " + this.userName);
+			// Check if the user a type is of the Account of the License Pool Manager 
+			if(Core.isSubClassOf(Account.getType(), mxUser.getMendixObject().getType()))
+			{
+				Account account = Account.initialize(getContext(), mxUser.getMendixObject());
+				LicensePool licensepool = account.getAccount_LicensePool();
+				if(licensepool == null || licensepool.getConcurrentUserLimit() == UserLimit.Unlimited)
+				{
+					log.trace("User: " + this.userName +" may login because the License Pool isn't present or is set on unlimited");
+					return Core.initializeSession( mxUser, this.currentSessionId);
+				} 
+				
+				List<Account> activeAccountList = getActivePoolAccounts(licensepool);
+				if (licensepool.getMaxConcurrentUsersSpecified() - activeAccountList.size() > 0 || activeAccountList.contains(account))
+				{
+					log.trace("User: " + this.userName +" may login because the licensepool hasn't reach the limit or the user is already logged in with another session.");
+					return Core.initializeSession( mxUser, this.currentSessionId);
+				} else
+				{
+					Core.getLogger("LicensePoolManager")
+					.info("Login failed for user "
+							+ account.getName()
+							+ " from licensepool "
+							+ licensepool.getName()
+							+ " as "
+							+ activeAccountList.size()
+							+ " out of "
+							+ licensepool.getMaxConcurrentUsersSpecified()
+							+ " available concurrent user licenses are currently in use.");					
+					throw new AuthenticationRuntimeException("Login attempt failed due to maximum number of concurrent users reached for license pool.");
+				}
+			} else
+			{
+				return Core.initializeSession( mxUser, this.currentSessionId);
+			}					
+		} else
+		{
+			throw new AuthenticationRuntimeException("Login FAILED");
+		}
+	}
+	
+	private List<Account> getActivePoolAccounts(LicensePool licensepool) throws CoreException
+	{
+		List<Account> PoolUsersOnline = new ArrayList<Account>();
+		// Check for each session is part of the LicensePool
+		for (ISession session : Core.getActiveSessions())
+		{
+			IMendixObject user = session.getUser().getMendixObject();
+			if (Core.isSubClassOf(Account.getType(), user.getType()))
+			{
+				Account loggedaccount = Account.initialize(this.context,user);
+				if (loggedaccount.getAccount_LicensePool().equals(licensepool))
+				{
+					PoolUsersOnline.add(loggedaccount);
+				}
+			}
+		}
+		return PoolUsersOnline;
+	}
+}
